@@ -1,3 +1,7 @@
+import { doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+import { db, auth } from './firebase-config.js';
+import { onAuthStateChanged, signOut } from "firebase/auth";
+
 // 示例数据
 const progressData = {
     'yuewen-1': '完成',
@@ -49,6 +53,51 @@ const progressData = {
     }
 };
 
+// 修改认证检查函数
+function checkAuth() {
+    return new Promise((resolve, reject) => {
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                window.location.href = 'login.html';
+                resolve(false);
+            } else {
+                resolve(true);
+            }
+        });
+    });
+}
+
+// 修改登出函数
+async function logout() {
+    try {
+        await signOut(auth);
+        localStorage.removeItem('username');
+        window.location.href = 'login.html';
+    } catch (error) {
+        console.error('登出失败：', error);
+    }
+}
+
+// 修改 DOMContentLoaded 事件
+document.addEventListener('DOMContentLoaded', async function() {
+    const isAuthenticated = await checkAuth();
+    if (!isAuthenticated) return;
+    
+    // 首先加载保存的数据
+    loadProgressData();
+    
+    // 其他初始化代码...
+    updateProgress();
+    
+    // 添加保存按钮事件监听
+    const saveButton = document.getElementById('saveProgress');
+    if (saveButton) {
+        saveButton.addEventListener('click', saveProgressData);
+    }
+    
+    // ... 其他现有的事件监听器 ...
+});
+
 // 更新状态选择器的HTML
 function createStatusSelector(id, currentStatus) {
     return `
@@ -87,19 +136,84 @@ function updateProgress() {
     }
 }
 
-// 保存进度数据到 localStorage
-function saveProgressData() {
-    localStorage.setItem('progressData', JSON.stringify(progressData));
-    showSaveNotification();
+// 修改保存进度函数，添加用户信息
+async function saveProgressData() {
+    try {
+        const user = auth.currentUser;
+        if (!user) throw new Error('用户未登录');
+        
+        // 收集所有状态数据
+        const statusData = {};
+        document.querySelectorAll('.status-selector').forEach(selector => {
+            const id = selector.dataset.id;
+            const status = selector.querySelector('.status-btn').textContent;
+            statusData[id] = status;
+        });
+
+        // 收集所有备注数据
+        const notesData = {};
+        document.querySelectorAll('.note-input').forEach(textarea => {
+            notesData[textarea.id] = textarea.value;
+        });
+
+        // 准备要保存的数据
+        const saveData = {
+            status: statusData,
+            notes: notesData,
+            lastUpdated: new Date().toISOString(),
+            updatedBy: user.email.split('@')[0] // 获取用户名部分
+        };
+
+        // 保存到 Firebase
+        const docRef = doc(db, 'progress', 'current');
+        await setDoc(docRef, saveData);
+
+        showSaveNotification('数据已保存到云端');
+    } catch (error) {
+        console.error('保存失败：', error);
+        showSaveNotification('保存失败，请重试', 'error');
+    }
 }
 
-// 从 localStorage 加载进度数据
-function loadProgressData() {
-    const savedData = localStorage.getItem('progressData');
-    if (savedData) {
-        Object.assign(progressData, JSON.parse(savedData));
-        updateProgress();
+// 添加加载数据函数
+async function loadProgressData() {
+  try {
+    const docRef = doc(db, 'progress', 'current');
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      
+      // 更新状态
+      if (data.status) {
+        Object.entries(data.status).forEach(([id, status]) => {
+          const selector = document.querySelector(`.status-selector[data-id="${id}"]`);
+          if (selector) {
+            const btn = selector.querySelector('.status-btn');
+            btn.textContent = status;
+            btn.className = `status-btn ${getStatusClass(status)}`;
+          }
+        });
+      }
+
+      // 更新备注
+      if (data.notes) {
+        Object.entries(data.notes).forEach(([id, content]) => {
+          const textarea = document.getElementById(id);
+          if (textarea) {
+            textarea.value = content;
+            updateNotePreview(id);
+          }
+        });
+      }
+
+      console.log('数据加载成功');
+    } else {
+      console.log('没有找到保存的数据');
     }
+  } catch (error) {
+    console.error('加载数据失败：', error);
+  }
 }
 
 // 显示保存成功提示
@@ -115,175 +229,7 @@ function showSaveNotification(type = '进度') {
     setTimeout(() => notification.classList.add('show'), 100);
     setTimeout(() => {
         notification.classList.remove('show');
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-// 修改 DOMContentLoaded 事件监听器
-document.addEventListener('DOMContentLoaded', function() {
-    // 加载保存的进度数据
-    loadProgressData();
-    
-    // 更新进度显示
-    updateProgress();
-
-    // 添加保存按钮事件监听
-    const saveButton = document.getElementById('saveProgress');
-    if (saveButton) {
-        saveButton.addEventListener('click', saveProgressData);
-    }
-
-    // 委托事件处理
-    document.addEventListener('click', function(e) {
-        // 处理状态选择器的点击
-        if (e.target.classList.contains('status-btn')) {
-            const selector = e.target.closest('.status-selector');
-            // 关闭其他打开的选择器
-            document.querySelectorAll('.status-selector.active').forEach(el => {
-                if (el !== selector) el.classList.remove('active');
-            });
-            selector.classList.toggle('active');
-        }
-        // 处理选项的点击
-        else if (e.target.classList.contains('status-option')) {
-            const selector = e.target.closest('.status-selector');
-            const btn = selector.querySelector('.status-btn');
-            const id = selector.dataset.id;
-            const status = e.target.dataset.status;
-            
-            // 更新按钮状态
-            btn.textContent = status;
-            btn.className = `status-btn ${getStatusClass(status)}`;
-            
-            // 更新数据
-            progressData[id] = status;
-            
-            // 关闭选项菜单
-            selector.classList.remove('active');
-        }
-    });
-
-    // 点击外部关闭选择器
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.status-selector')) {
-            document.querySelectorAll('.status-selector.active').forEach(el => {
-                el.classList.remove('active');
-            });
-        }
-    });
-
-    // 加载备注
-    loadNotes();
-    
-    // 添加备注输入框事件监听
-    document.querySelectorAll('.note-input').forEach(textarea => {
-        // 自动调整高度
-        textarea.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-        });
-        
-        // 添加编辑状态样式
-        textarea.addEventListener('focus', function() {
-            this.classList.add('editing');
-        });
-        
-        textarea.addEventListener('blur', function() {
-            this.classList.remove('editing');
-            saveNotes(); // 失去焦点时保存备注
-        });
-        
-        // 按下 Ctrl+Enter 保存
-        textarea.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                this.blur();
-            }
-        });
-    });
-});
-
-// 添加以下代码
-document.addEventListener('DOMContentLoaded', function() {
-    // 防止详情框超出视窗
-    const milestoneCards = document.querySelectorAll('.milestone-card');
-    
-    milestoneCards.forEach(card => {
-        card.addEventListener('mouseenter', function() {
-            const details = this.querySelector('.milestone-details');
-            const rect = details.getBoundingClientRect();
-            
-            if (rect.right > window.innerWidth) {
-                details.style.left = 'auto';
-                details.style.right = '0';
-            }
-            
-            if (rect.bottom > window.innerHeight) {
-                details.style.maxHeight = `${window.innerHeight - rect.top - 20}px`;
-            }
-        });
-    });
-});
-
-// 修改状态更新逻辑，在状态改变时启用保存按钮
-function updateStatusAndEnableSave(id, status) {
-    progressData[id] = status;
-    const saveButton = document.getElementById('saveProgress');
-    if (saveButton) {
-        saveButton.classList.add('active');
-    }
-}
-
-// 在状态选择器的点击处理中调用新函数
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('status-option')) {
-        const selector = e.target.closest('.status-selector');
-        const btn = selector.querySelector('.status-btn');
-        const id = selector.dataset.id;
-        const status = e.target.dataset.status;
-        
-        btn.textContent = status;
-        btn.className = `status-btn ${getStatusClass(status)}`;
-        
-        // 使用新的更新函数
-        updateStatusAndEnableSave(id, status);
-        
-        selector.classList.remove('active');
-    }
-});
-
-// 添加保存备注的函数
-function saveNotes() {
-    const notes = {};
-    document.querySelectorAll('.note-input').forEach(textarea => {
-        notes[textarea.id] = textarea.value;
-    });
-    progressData.notes = notes;
-    saveProgressData(); // 调用现有的保存函数
-}
-
-// 加载备注数据
-function loadNotes() {
-    if (progressData.notes) {
-        Object.entries(progressData.notes).forEach(([id, value]) => {
-            updateNotePreview(id);
-        });
-    }
-}
-
-// 修改保存通知函数，添加保存类型参数
-function showSaveNotification(type = '进度') {
-    const notification = document.createElement('div');
-    notification.className = 'save-notification';
-    notification.innerHTML = `
-        <span>✓</span>
-        <span>${type}已保存</span>
-    `;
-    document.body.appendChild(notification);
-
-    setTimeout(() => notification.classList.add('show'), 100);
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), 3000);
     }, 3000);
 }
 
@@ -343,7 +289,7 @@ function updateNotePreview(noteId) {
     }
 }
 
-// 更新里程说明的点击交互
+// 更新���程说明的点击交互
 document.addEventListener('DOMContentLoaded', function() {
     const milestoneCards = document.querySelectorAll('.milestone-card');
     const detailsContent = document.getElementById('milestone-details-content');
@@ -400,7 +346,7 @@ function getMilestoneDetails(step) {
     const details = {
         '1': `
             <h3>第一步：制定计划背景与明确目标</h3>
-            <p>本阶段主要围绕反洗钱管理体系的整体规划和目标设定展开，为后续工作奠定基础。</p>
+            <p>本段主要围绕反洗钱管理体系的整体规划和目标设定展开，为后续工作奠定基础。</p>
             <div class="divider"></div>
             <div class="subtitle">1.1 背景分析</div>
             <ul>
@@ -420,7 +366,7 @@ function getMilestoneDetails(step) {
             <div class="divider"></div>
             <div class="subtitle">2.1 法规梳理</div>
             <ul>
-                <li>国内法规：学习《中华人民共和国反洗钱法》、最新司法解释、中国人民银行和相关监管机构的反洗钱规定。</li>
+                <li>国内规：学习《中华人民共和国反洗钱法》、最新司法解释、中国人民银行和相关监管机构的反洗钱规定。</li>
                 <li>行业规范：关注行业自律组织发布的合规指南和最佳实践。</li>
             </ul>
             <div class="subtitle">2.2 监管要求</div>
@@ -432,19 +378,19 @@ function getMilestoneDetails(step) {
         `,
         '3': `
             <h3>第三步：洗钱风险识别与评估</h3>
-            <p>本阶段重点开展各业务板块的风险识别和评估工作，建立风险防控基础。</p>
+            <p>本阶重点开展各业务板的风险识别和评估工作，建立风险防控基础。</p>
             <div class="divider"></div>
             <div class="subtitle">3.1 风险场景分析</div>
             <ul>
                 <li>阅文IP业务：关注版权交易中的异常资金流动、虚假授权等。</li>
                 <li>直播业务：识别虚假打赏、自我打赏、主播与用户串通等风险。</li>
                 <li>在线游戏业务：监控游戏内虚拟物品交易、账号交易、外挂代练等可能的洗钱手段。</li>
-                <li>在线电商业务：防范虚假订单、退款滥用、礼品卡滥用等洗钱方式。</li>
+                <li>在线电商业务：防���虚假订单、退款滥用、礼品卡滥用等洗钱方式。</li>
             </ul>
             <div class="subtitle">3.2 风险评估策略</div>
             <ul>
                 <li>数据分析：利用大数据技术，对交易行为、资金流动进行分析。</li>
-                <li>用户分级：根据风险程度对用户���行分类管理���实施差异化的监控措施。</li>
+                <li>用户分级：根据风险程度对用户行分类管理实施差异化的监控措施。</li>
                 <li>持续监控：建立实时监控系统，及时发现和预警异常行为。</li>
             </ul>
         `,
@@ -460,19 +406,19 @@ function getMilestoneDetails(step) {
             </ul>
             <div class="subtitle">4.2 外部协同</div>
             <ul>
-                <li>合作伙伴管理：对接支付机构、银行等，确保资金渠道的合规性。</li>
+                <li>合作伙伴管理：对接支���机构、银行等，确保资金渠道的合规性。</li>
                 <li>行业交流：参与行业反洗钱联盟，分享风险信息和防控经验。</li>
             </ul>
         `,
         '5': `
             <h3>第五步：数据需求与整合</h3>
-            <p>本阶段重点关注数据收集和分析体系的建设，为风险管理提供支持。</p>
+            <p>本阶段重点关注数据收集和分析体系的建设，为风险管理提供支。</p>
             <div class="divider"></div>
             <div class="subtitle">5.1 数据收集</div>
             <ul>
                 <li>客户信息：获取并验证用户的身份信息、联系方式、交易习惯等。</li>
                 <li>交易数据：收集交易金额、频率、对象、方式等详细信息。</li>
-                <li>设备与行为数据：记录设备ID、IP地址、登录日志、操作行为等。</li>
+                <li>设备与行为据：记录设备ID、IP地址、登录日志、操作行为等。</li>
             </ul>
             <div class="subtitle">5.2 数据整合与分析</div>
             <ul>
@@ -482,18 +428,18 @@ function getMilestoneDetails(step) {
         `,
         '6': `
             <h3>第六步：员工培训与合规意识提升</h3>
-            <p>本阶段重点提升全员反洗钱意识，确保各项措施的有效执行。</p>
+            <p>本阶段重点提升全员反洗钱意识，确保各项措施的��效执行。</p>
             <div class="divider"></div>
             <div class="subtitle">6.1 培训计划制定</div>
             <ul>
                 <li>全员培训：普及反洗钱知识，提升整体合规意识。</li>
-                <li>专项培训：针对风控、客户服务、技术等关键岗位，开展深入的专业培训。</li>
+                <li>专项培训：针对风控、客户服务、技术等关键岗，开展深入的专业培训。</li>
             </ul>
             <div class="subtitle">6.2 培训内容</div>
             <ul>
                 <li>法律法规解读：学习相关法律法规和监管要求。</li>
                 <li>风险案例分析：通过真实案例，了解洗钱手法和防控措施。</li>
-                <li>操作流程培训：熟悉内部合规流程和系统操作。</li>
+                <li>操作流程培训：熟悉内部合规流程和系统操。</li>
             </ul>
         `,
         '7': `
@@ -508,7 +454,7 @@ function getMilestoneDetails(step) {
             <div class="subtitle">7.2 外部汇报</div>
             <ul>
                 <li>监管报告：按照要求，定期向监管机构提交反洗钱工作报告。</li>
-                <li>应急响应：建立与监管机构的快速���通渠道，及时报告重大风险事件。</li>
+                <li>应急响应：建立与监管机构的快速通渠道，及时报告重大风险事件。</li>
             </ul>
         `,
         '8': `
@@ -671,4 +617,13 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && noteModal.classList.contains('show')) {
         closeNoteModal();
     }
-}); 
+});
+
+// 添加登出功能
+function logout() {
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('username');
+    window.location.href = 'login.html';
+}
+
+// 可以在适当的位置添加登出按钮的HTML和事件监听 

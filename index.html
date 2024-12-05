@@ -6,11 +6,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>非金融板块反洗钱风险管理进度概览</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        .logout-btn {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            background: #ff3b30;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+        
+        .logout-btn:hover {
+            background: #ff453a;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1 class="main-title">非金融板块反洗钱风险管理进度概览</h1>
+            <button id="logoutBtn" class="logout-btn">退出登录</button>
         </header>
 
         <main>
@@ -37,7 +57,7 @@
                             <tbody>
                                 <tr>
                                     <td>在线游戏</td>
-                                    <td><select class="status-select"><option>待推动</option><option>进行中</option><option>完成</option></select></td>
+                                    <td><select class="status-select"><option>待推</option><option>进行中</option><option>完成</option></select></td>
                                     <td><select class="status-select"><option>待推动</option><option>进行中</option><option>完成</option></select></td>
                                     <td><select class="status-select"><option>待推动</option><option>进行中</option><option>完成</option></select></td>
                                     <td><select class="status-select"><option>待推动</option><option selected>进行中</option><option>完成</option></select></td>
@@ -164,6 +184,13 @@
         <span class="text">进度已保存</span>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js" type="module"></script>
+    <!-- Add Firebase products that you want to use -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js" type="module"></script>
+    <script>
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+    </script>
 </body>
 </html> 
