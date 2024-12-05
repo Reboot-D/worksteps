@@ -1,0 +1,17 @@
+{
+  "name": "worksteps",
+  "version": "1.0.0",
+  "description": "Work steps progress tracking application",
+  "main": "index.html",
+  "scripts": {
+    "dev": "live-server",
+    "start": "live-server"
+  },
+  "dependencies": {
+    "firebase": "^11.0.2",
+    "live-server": "^1.2.2"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}
