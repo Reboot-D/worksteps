@@ -1,0 +1,28 @@
+{
+  "name": "worksteps",
+  "version": "1.0.0",
+  "description": "非金融板块反洗钱风险管理进度概览",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Reboot-D/worksteps.git"
+  },
+  "keywords": [
+    "progress",
+    "management",
+    "risk"
+  ],
+  "author": "Reboot-D",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Reboot-D/worksteps/issues"
+  },
+  "homepage": "https://github.com/Reboot-D/worksteps#readme",
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+}
